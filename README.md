@@ -1,4 +1,4 @@
-# Do Me
+# Tasks
 
 A small browser-based to-do app built around Inbox, Today, custom lists, and folders/projects.
 
@@ -37,12 +37,12 @@ Settings → Pages → Deploy from a branch → `main` → `/ (root)`.
 ## Dropbox sync
 You can reuse the Dropbox app you already use for your other personal apps.
 
-1. Host Do Me on GitHub Pages first.
+1. Host Tasks on GitHub Pages first.
 2. In the Dropbox App Console, add the exact Do Me GitHub Pages URL under OAuth 2 → Redirect URIs.
 3. Make sure `files.content.read` and `files.content.write` are enabled.
 4. In Do Me → Settings, paste the same Dropbox App key and choose Connect Dropbox.
 
-For compatibility with earlier builds, Do Me continues to store its Dropbox data in `/things-to-do.json` inside the Dropbox app folder, separate from your other apps. Tasks, lists, and folders are merged individually during sync, with deletion markers to avoid deleted items reappearing on another device.
+For compatibility with earlier builds, Tasks continues to store its Dropbox data in `/things-to-do.json` inside the Dropbox app folder, separate from your other apps. Tasks, lists, and folders are merged individually during sync, with deletion markers to avoid deleted items reappearing on another device.
 
 
 Folder headings include a disclosure button; click the chevron or folder name to collapse or expand the lists inside.
