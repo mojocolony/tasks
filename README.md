@@ -49,4 +49,4 @@ Folder headings include a disclosure button; click the chevron or folder name to
 
 ## Appearance
 
-Choose a task font and text size in Settings. Appearance preferences are saved on each device.
+Choose a task font and text size (13–22 px) in Settings. Task text stays regular weight at every size, and appearance preferences are saved on each device.

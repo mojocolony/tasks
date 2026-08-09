@@ -78,7 +78,7 @@
 
   function applyAppearance(font, size, persist=true){
     if(!FONT_STACKS[font]) font = 'system';
-    if(!['13','14','15','16','17','18','20'].includes(String(size))) size = '15';
+    if(!['13','14','15','16','17','18','19','20','21','22'].includes(String(size))) size = '15';
     document.documentElement.style.setProperty('--app-font', FONT_STACKS[font]);
     document.documentElement.style.setProperty('--task-text-size', `${size}px`);
     if(els.appFont) els.appFont.value = font;
