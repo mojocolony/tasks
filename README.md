@@ -24,8 +24,8 @@ A small browser-based to-do app built around Inbox, Today, custom lists, and fol
 - Optional Dropbox sync using OAuth 2 + PKCE
 - Installable as a PWA when hosted on HTTPS
 
-## Migration from the first prototype
-If the earlier prototype exists in the same browser, its tasks are migrated automatically. Old Upcoming and Someday tasks become custom lists; old Today tasks become Inbox tasks marked for Today.
+## Migration from earlier versions
+Existing Do Me / earlier Tasks data in the same browser is migrated automatically to the new Tasks storage keys. Old Upcoming and Someday tasks become custom lists; old Today tasks become Inbox tasks marked for Today.
 
 ## Try it locally
 Open `index.html` in a modern browser. Everything except Dropbox sync will work immediately.
@@ -38,11 +38,11 @@ Settings → Pages → Deploy from a branch → `main` → `/ (root)`.
 You can reuse the Dropbox app you already use for your other personal apps.
 
 1. Host Tasks on GitHub Pages first.
-2. In the Dropbox App Console, add the exact Do Me GitHub Pages URL under OAuth 2 → Redirect URIs.
+2. In the Dropbox App Console, add the exact Tasks GitHub Pages URL under OAuth 2 → Redirect URIs.
 3. Make sure `files.content.read` and `files.content.write` are enabled.
-4. In Do Me → Settings, paste the same Dropbox App key and choose Connect Dropbox.
+4. In Tasks → Settings, paste the same Dropbox App key and choose Connect Dropbox.
 
-For compatibility with earlier builds, Tasks continues to store its Dropbox data in `/things-to-do.json` inside the Dropbox app folder, separate from your other apps. Tasks, lists, and folders are merged individually during sync, with deletion markers to avoid deleted items reappearing on another device.
+Tasks stores its Dropbox data in `/tasks.json` inside the Dropbox app folder, separate from your other apps. On the first sync after upgrading from Do Me, the app automatically imports the old `/things-to-do.json`, writes the data safely to `/tasks.json`, and removes the old file only after the new file has been saved successfully. Tasks, lists, and folders are merged individually during sync, with deletion markers to avoid deleted items reappearing on another device.
 
 
 Folder headings include a disclosure button; click the chevron or folder name to collapse or expand the lists inside.

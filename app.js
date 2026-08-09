@@ -1,13 +1,15 @@
 (() => {
-  const STORAGE_KEY = 'things-to-do-v2';
-  const LEGACY_STORAGE_KEY = 'things-to-do-v1';
-  const DBX_KEY = 'things-to-do-dropbox-key';
-  const DBX_TOKEN = 'things-to-do-dropbox-token';
-  const DBX_REFRESH = 'things-to-do-dropbox-refresh';
-  const DBX_VERIFIER = 'things-to-do-dropbox-verifier';
-  const DBX_STATE = 'things-to-do-dropbox-state';
-  const DROPBOX_FILE = '/things-to-do.json';
-  const COLLAPSED_FOLDERS_KEY = 'things-to-do-collapsed-folders';
+  const STORAGE_KEY = 'tasks-v2';
+  const LEGACY_STORAGE_KEYS = ['things-to-do-v2', 'things-to-do-v1'];
+  const DBX_KEY = 'tasks-dropbox-key';
+  const DBX_TOKEN = 'tasks-dropbox-token';
+  const DBX_REFRESH = 'tasks-dropbox-refresh';
+  const DBX_VERIFIER = 'tasks-dropbox-verifier';
+  const DBX_STATE = 'tasks-dropbox-state';
+  const DROPBOX_FILE = '/tasks.json';
+  const LEGACY_DROPBOX_FILE = '/things-to-do.json';
+  const COLLAPSED_FOLDERS_KEY = 'tasks-collapsed-folders';
+  const LEGACY_COLLAPSED_FOLDERS_KEY = 'things-to-do-collapsed-folders';
   const SYNC_DEBOUNCE = 1000;
 
   const now = () => Date.now();
@@ -22,6 +24,8 @@
     deletedFolders: {},
     updatedAt: now()
   });
+
+  migrateRenamedLocalKeys();
 
   let state = loadState();
   let currentView = {type: 'inbox', id: null};
@@ -45,9 +49,24 @@
     listName: $('listName'), listFolderSelect: $('listFolderSelect'), listError: $('listError'), deleteListBtn: $('deleteListBtn'),
     folderName: $('folderName'), folderError: $('folderError'), deleteFolderBtn: $('deleteFolderBtn'),
     syncStatus: $('syncStatus'), dropboxKey: $('dropboxKey'), dropboxStatus: $('dropboxStatus'),
-    connectDropboxBtn: $('connectDropboxBtn'), disconnectDropboxBtn: $('disconnectDropboxBtn'), toast: $('toast')
+    connectDropboxBtn: $('connectDropboxBtn'), disconnectDropboxBtn: $('disconnectDropboxBtn'), toast: $('toast'),
+    sidebar: $('sidebar'), sidebarBackdrop: $('sidebarBackdrop')
   };
 
+
+  function migrateRenamedLocalKeys(){
+    const keyPairs = [
+      [DBX_KEY, 'things-to-do-dropbox-key'],
+      [DBX_TOKEN, 'things-to-do-dropbox-token'],
+      [DBX_REFRESH, 'things-to-do-dropbox-refresh'],
+      [COLLAPSED_FOLDERS_KEY, LEGACY_COLLAPSED_FOLDERS_KEY]
+    ];
+    keyPairs.forEach(([nextKey, oldKey]) => {
+      if(localStorage.getItem(nextKey) == null && localStorage.getItem(oldKey) != null){
+        localStorage.setItem(nextKey, localStorage.getItem(oldKey));
+      }
+    });
+  }
 
   function loadCollapsedFolders(){
     try {
@@ -78,8 +97,9 @@
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if(saved) return normalize(JSON.parse(saved));
-      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-      if(legacy){
+      for(const legacyKey of LEGACY_STORAGE_KEYS){
+        const legacy = localStorage.getItem(legacyKey);
+        if(!legacy) continue;
         const migrated = normalize(JSON.parse(legacy));
         localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
         return migrated;
@@ -225,7 +245,7 @@
     els.listTree.querySelectorAll('.list-row').forEach(btn => {
       btn.addEventListener('click',()=>{
         currentView = {type:'list', id:btn.dataset.listId};
-        els.search.value=''; els.tagFilter.value=''; render();
+        els.search.value=''; els.tagFilter.value=''; render(); closeMobileSidebar();
       });
       bindSidebarDropTarget(btn,{type:'list',listId:btn.dataset.listId});
     });
@@ -648,13 +668,23 @@
     const rr=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const d=await rr.json();if(!rr.ok)return r;
     localStorage.setItem(DBX_TOKEN,d.access_token);return fetch(url,{...opts,headers:{...(opts.headers||{}),Authorization:`Bearer ${d.access_token}`}});
   }
-  async function readDropbox(){
-    const r=await apiFetch('https://content.dropboxapi.com/2/files/download',{headers:{'Dropbox-API-Arg':JSON.stringify({path:DROPBOX_FILE})}});
+  async function readDropboxFile(path){
+    const r=await apiFetch('https://content.dropboxapi.com/2/files/download',{headers:{'Dropbox-API-Arg':JSON.stringify({path})}});
     if(r.status===409)return null;if(!r.ok)throw new Error('Could not read Dropbox data');return normalize(await r.json());
+  }
+  async function readDropbox(){
+    const current=await readDropboxFile(DROPBOX_FILE);
+    if(current)return {data:current, usedLegacy:false};
+    const legacy=await readDropboxFile(LEGACY_DROPBOX_FILE);
+    return {data:legacy, usedLegacy:!!legacy};
   }
   async function writeDropbox(data){
     const r=await apiFetch('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','Dropbox-API-Arg':JSON.stringify({path:DROPBOX_FILE,mode:'overwrite',autorename:false,mute:true})},body:JSON.stringify(data)});
     if(!r.ok)throw new Error('Could not save to Dropbox');
+  }
+  async function deleteLegacyDropboxFile(){
+    const r=await apiFetch('https://api.dropboxapi.com/2/files/delete_v2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:LEGACY_DROPBOX_FILE})});
+    if(r.status!==409 && !r.ok)throw new Error('Tasks synced, but the old Dropbox data file could not be removed');
   }
 
   function mergeStates(local,remote){
@@ -676,15 +706,37 @@
   }
   async function syncDropbox(){
     if(!localStorage.getItem(DBX_TOKEN))return;els.syncStatus.textContent='Syncing…';
-    try{const remote=await readDropbox();state=remote?mergeStates(state,remote):normalize(state);localStorage.setItem(STORAGE_KEY,JSON.stringify(state));await writeDropbox(state);render();els.dropboxStatus.textContent='Dropbox is connected and synced.';}
+    try{
+      const remoteResult=await readDropbox();
+      const remote=remoteResult.data;
+      state=remote?mergeStates(state,remote):normalize(state);
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+      await writeDropbox(state);
+      if(remoteResult.usedLegacy) await deleteLegacyDropboxFile();
+      render();
+      els.dropboxStatus.textContent='Dropbox is connected and synced.';
+    }
     catch(e){els.syncStatus.textContent='Dropbox sync error';els.dropboxStatus.textContent=e.message||'Dropbox sync failed.';throw e;}
   }
   function disconnectDropbox(){[DBX_TOKEN,DBX_REFRESH].forEach(k=>localStorage.removeItem(k));render();els.dropboxStatus.textContent='Dropbox disconnected from this browser.'}
 
   function exportBackup(){
-    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`do-me-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);
+    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`tasks-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);
   }
   async function importBackup(file){try{const obj=normalize(JSON.parse(await file.text()));state=mergeStates(state,obj);saveState();toast('Backup imported')}catch{toast('That backup could not be read')}}
+
+  function openMobileSidebar(){
+    if(!els.sidebar) return;
+    els.sidebar.classList.add('is-open');
+    if(els.sidebarBackdrop) els.sidebarBackdrop.hidden=false;
+    document.body.classList.add('menu-open');
+  }
+  function closeMobileSidebar(){
+    if(!els.sidebar) return;
+    els.sidebar.classList.remove('is-open');
+    if(els.sidebarBackdrop) els.sidebarBackdrop.hidden=true;
+    document.body.classList.remove('menu-open');
+  }
 
   function currentRedirect(){return location.origin+location.pathname}
   function randomString(len){const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';const arr=new Uint8Array(len);crypto.getRandomValues(arr);return[...arr].map(x=>chars[x%chars.length]).join('')}
@@ -694,17 +746,23 @@
   function escAttr(s=''){return esc(s)}
   function toast(msg){clearTimeout(toastTimer);els.toast.textContent=msg;els.toast.hidden=false;toastTimer=setTimeout(()=>els.toast.hidden=true,2200)}
 
-  document.querySelectorAll('.nav-row[data-view]').forEach(b=>b.addEventListener('click',()=>{currentView={type:b.dataset.view,id:null};els.search.value='';els.tagFilter.value='';render()}));
+  document.querySelectorAll('.nav-row[data-view]').forEach(b=>b.addEventListener('click',()=>{currentView={type:b.dataset.view,id:null};els.search.value='';els.tagFilter.value='';render();closeMobileSidebar()}));
   const inboxNav=document.querySelector('.nav-row[data-view="inbox"]');
   const todayNav=document.querySelector('.nav-row[data-view="today"]');
   if(inboxNav) bindSidebarDropTarget(inboxNav,{type:'inbox'});
   if(todayNav) bindSidebarDropTarget(todayNav,{type:'today'});
   $('addTaskBtn').addEventListener('click',()=>openTask());
+  $('inlineAddTaskBtn').addEventListener('click',()=>openTask());
+  $('mobileAddBtn').addEventListener('click',()=>openTask());
+  $('mobileMenuBtn').addEventListener('click',openMobileSidebar);
+  $('mobileSidebarCloseBtn').addEventListener('click',closeMobileSidebar);
+  els.sidebarBackdrop?.addEventListener('click',closeMobileSidebar);
   els.quickAddTitle.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveQuickAdd();}});
   $('quickAddMoreBtn').addEventListener('click',quickAddMore);
   els.quickAddDialog.addEventListener('click',e=>{if(e.target===els.quickAddDialog)closeQuickAdd()});
   els.quickAddDialog.addEventListener('cancel',e=>{e.preventDefault();closeQuickAdd()});
   document.addEventListener('keydown',e=>{
+    if(e.key==='Escape' && els.sidebar?.classList.contains('is-open')){closeMobileSidebar();return;}
     if(e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
     if(e.key.toLowerCase()!=='q' || isTypingTarget(e.target)) return;
     if(document.querySelector('dialog[open]')) return;

@@ -3,88 +3,101 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f4f1ea">
-  <title>Do Me</title>
+  <meta name="theme-color" content="#f7f5f1">
+  <title>Tasks</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon-192.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar">
-      <div>
-        <div class="eyebrow">TASKS</div>
-        <h1>Do Me</h1>
+    <aside id="sidebar" class="sidebar" aria-label="Lists and folders">
+      <div class="sidebar-top">
+        <div class="brand-row">
+          <div>
+            <div class="eyebrow">TASKS</div>
+            <div class="brand">Tasks</div>
+          </div>
+          <div class="brand-actions">
+            <button id="settingsBtn" class="icon-btn" type="button" aria-label="Settings" title="Settings">⚙</button>
+            <button id="mobileSidebarCloseBtn" class="icon-btn mobile-only" type="button" aria-label="Close menu">×</button>
+          </div>
+        </div>
         <div id="syncStatus" class="sync-status">Saved on this device</div>
-      </div>
-      <div class="top-actions">
-        <button id="settingsBtn" class="icon-btn" aria-label="Settings" title="Settings">⚙</button>
-        <button id="addTaskBtn" class="primary-btn" title="Add task (Q)">+ Add Task <span class="shortcut-key">Q</span></button>
-      </div>
-    </header>
+        <button id="addTaskBtn" class="primary-btn sidebar-add" type="button" title="Add task (Q)">+ Add task <span class="shortcut-key">Q</span></button>
 
-    <div class="workspace">
-      <aside class="sidebar" aria-label="Lists and folders">
+        <div class="sidebar-search">
+          <div class="search-wrap">
+            <span class="search-icon">⌕</span>
+            <input id="searchInput" type="search" placeholder="Search all tasks" autocomplete="off">
+          </div>
+          <select id="tagFilter" aria-label="Filter by tag">
+            <option value="">All tags</option>
+          </select>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
         <div class="sidebar-section smart-section">
-          <button class="nav-row active" data-view="inbox">
+          <button class="nav-row active" data-view="inbox" type="button">
             <span class="nav-label"><span class="nav-icon">⌂</span>Inbox</span>
             <span id="countInbox" class="count-pill">0</span>
           </button>
-          <button class="nav-row" data-view="today">
+          <button class="nav-row" data-view="today" type="button">
             <span class="nav-label"><span class="nav-icon">☀</span>Today</span>
             <span id="countToday" class="count-pill">0</span>
           </button>
         </div>
 
-        <div class="sidebar-section">
+        <div class="sidebar-section projects-section">
           <div class="sidebar-heading-row">
-            <div class="sidebar-heading">LISTS</div>
+            <div class="sidebar-heading">MY LISTS</div>
             <div class="sidebar-heading-actions">
-              <button id="addListBtn" class="mini-btn" type="button">+ List</button>
-              <button id="addFolderBtn" class="mini-btn" type="button">+ Folder</button>
+              <button id="addListBtn" class="tiny-icon-btn" type="button" title="New list" aria-label="New list">＋</button>
+              <button id="addFolderBtn" class="tiny-icon-btn" type="button" title="New folder" aria-label="New folder">▣</button>
             </div>
           </div>
           <div id="listTree" class="list-tree"></div>
-          <div id="noListsHint" class="sidebar-hint">Create lists for whatever matters to you, then group them into folders or projects if useful.</div>
+          <div id="noListsHint" class="sidebar-hint">Create lists, then group them into folders or projects if useful.</div>
         </div>
 
         <div class="sidebar-section archive-section">
-          <button class="nav-row" data-view="completed">
+          <button class="nav-row" data-view="completed" type="button">
             <span class="nav-label"><span class="nav-icon">✓</span>Completed</span>
             <span id="countCompleted" class="count-pill">0</span>
           </button>
         </div>
-      </aside>
+      </nav>
+    </aside>
 
-      <main class="content-panel">
-        <section class="toolbar">
-          <div class="search-wrap">
-            <span class="search-icon">⌕</span>
-            <input id="searchInput" type="search" placeholder="Search all tasks or tags" autocomplete="off">
-          </div>
-          <select id="tagFilter" aria-label="Filter by tag">
-            <option value="">All tags</option>
-          </select>
-        </section>
+    <div id="sidebarBackdrop" class="sidebar-backdrop" hidden></div>
 
+    <main class="content-panel">
+      <div class="mobile-topbar mobile-only">
+        <button id="mobileMenuBtn" class="icon-btn" type="button" aria-label="Open menu">☰</button>
+        <span class="mobile-brand">Tasks</span>
+        <button id="mobileAddBtn" class="icon-btn" type="button" aria-label="Add task">＋</button>
+      </div>
+
+      <div class="content-inner">
         <section class="view-header">
           <div>
-            <h2 id="viewTitle">Inbox</h2>
+            <h1 id="viewTitle">Inbox</h1>
             <p id="viewSubtitle">Things you’ve captured but haven’t filed yet.</p>
           </div>
-          <button id="editCurrentListBtn" class="secondary-btn compact" type="button" hidden>Edit list</button>
+          <button id="editCurrentListBtn" class="quiet-btn" type="button" hidden>Edit</button>
         </section>
 
         <div id="taskList" class="task-list" aria-live="polite"></div>
+        <button id="inlineAddTaskBtn" class="inline-add-task" type="button">＋ Add task</button>
         <div id="emptyState" class="empty-state" hidden>
           <div class="empty-mark">✓</div>
           <h3 id="emptyTitle">Nothing here.</h3>
           <p id="emptyText">Add a task when something comes to mind.</p>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   </div>
-
   <dialog id="quickAddDialog" class="quick-add-modal">
     <div class="quick-add-body">
       <div class="eyebrow">QUICK ADD · INBOX</div>
