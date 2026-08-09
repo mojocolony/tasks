@@ -46,3 +46,7 @@ Tasks stores its Dropbox data in `/tasks.json` inside the Dropbox app folder, se
 
 
 Folder headings include a disclosure button; click the chevron or folder name to collapse or expand the lists inside.
+
+## Appearance
+
+Choose a task font and text size in Settings. Appearance preferences are saved on each device.

@@ -53,6 +53,10 @@
           <div class="sidebar-heading-row">
             <div class="sidebar-heading">MY LISTS</div>
             <div class="sidebar-heading-actions">
+              <select id="sidebarSortSelect" class="sidebar-sort-select" aria-label="Sort lists and folders" title="Sort lists and folders">
+                <option value="manual">Manual</option>
+                <option value="alpha">A–Z</option>
+              </select>
               <button id="addListBtn" class="tiny-icon-btn" type="button" title="New list" aria-label="New list">＋</button>
               <button id="addFolderBtn" class="tiny-icon-btn" type="button" title="New folder" aria-label="New folder">▣</button>
             </div>
@@ -85,7 +89,17 @@
             <h1 id="viewTitle">Inbox</h1>
             <p id="viewSubtitle">Things you’ve captured but haven’t filed yet.</p>
           </div>
-          <button id="editCurrentListBtn" class="quiet-btn" type="button" hidden>Edit</button>
+          <div class="view-actions">
+            <select id="taskSortSelect" class="task-sort-select" aria-label="Sort tasks" title="Sort tasks">
+              <option value="manual">Manual</option>
+              <option value="due">Due date</option>
+              <option value="priority">Priority</option>
+              <option value="title">A–Z</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+            </select>
+            <button id="editCurrentListBtn" class="quiet-btn" type="button" hidden>Edit</button>
+          </div>
         </section>
 
         <div id="taskList" class="task-list" aria-live="polite"></div>
@@ -233,6 +247,38 @@
     </div>
 
     <div class="modal-body">
+      <section class="settings-section">
+        <h3>Appearance</h3>
+        <p>Choose the font and task text size you prefer on this device.</p>
+        <div class="two-col appearance-grid">
+          <label>Font
+            <select id="appFont">
+              <option value="system">System</option>
+              <option value="avenir">Avenir / Helvetica</option>
+              <option value="georgia">Georgia</option>
+              <option value="charter">Charter</option>
+              <option value="times">Times</option>
+              <option value="mono">Menlo / Monaco</option>
+            </select>
+          </label>
+          <label>Task text size
+            <select id="taskTextSize">
+              <option value="13">13 px</option>
+              <option value="14">14 px</option>
+              <option value="15">15 px</option>
+              <option value="16">16 px</option>
+              <option value="17">17 px</option>
+              <option value="18">18 px</option>
+              <option value="20">20 px</option>
+            </select>
+          </label>
+        </div>
+        <div class="appearance-preview" aria-live="polite">
+          <span class="preview-check">○</span><span id="appearancePreviewText">This is how a task will look.</span>
+        </div>
+        <button id="resetAppearanceBtn" class="secondary-btn compact" type="button">Reset appearance</button>
+      </section>
+
       <section class="settings-section">
         <h3>Dropbox Sync</h3>
         <p>Optional. Reuse the same Dropbox app you already created for your other personal apps.</p>
