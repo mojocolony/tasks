@@ -1,15 +1,21 @@
 (() => {
-  const STORAGE_KEY = 'things-to-do-v2';
-  const LEGACY_STORAGE_KEY = 'things-to-do-v1';
-  const DBX_KEY = 'things-to-do-dropbox-key';
-  const DBX_TOKEN = 'things-to-do-dropbox-token';
-  const DBX_REFRESH = 'things-to-do-dropbox-refresh';
-  const DBX_VERIFIER = 'things-to-do-dropbox-verifier';
-  const DBX_STATE = 'things-to-do-dropbox-state';
-  const DROPBOX_FILE = '/things-to-do.json';
-  const COLLAPSED_FOLDERS_KEY = 'things-to-do-collapsed-folders';
+  const STORAGE_KEY = 'tasks-v2';
+  const LEGACY_STORAGE_KEYS = ['things-to-do-v2', 'things-to-do-v1'];
+  const DBX_KEY = 'tasks-dropbox-key';
+  const DBX_TOKEN = 'tasks-dropbox-token';
+  const DBX_REFRESH = 'tasks-dropbox-refresh';
+  const DBX_VERIFIER = 'tasks-dropbox-verifier';
+  const DBX_STATE = 'tasks-dropbox-state';
+  const DROPBOX_FILE = '/tasks.json';
+  const LEGACY_DROPBOX_FILE = '/things-to-do.json';
+  const COLLAPSED_FOLDERS_KEY = 'tasks-collapsed-folders';
+  const LEGACY_COLLAPSED_FOLDERS_KEY = 'things-to-do-collapsed-folders';
+  const FONT_KEY = 'tasks-font-family';
+  const TEXT_SIZE_KEY = 'tasks-text-size';
+  const TASK_SORT_KEY = 'tasks-task-sort';
+  const SIDEBAR_SORT_KEY = 'tasks-sidebar-sort';
   const SYNC_DEBOUNCE = 1000;
-  const APP_BUILD = 10;
+  const APP_BUILD = 11;
 
   const now = () => Date.now();
   const uuid = () => crypto.randomUUID();
@@ -24,6 +30,8 @@
     updatedAt: now()
   });
 
+  migrateRenamedLocalKeys();
+
   let state = loadState();
   let currentView = {type: 'inbox', id: null};
   let editingTaskId = null;
@@ -31,6 +39,8 @@
   let editingFolderId = null;
   let draggedId = null;
   let dropTarget = null;
+  let sidebarDrag = null;
+  let sidebarDropTarget = null;
   let syncTimer = null;
   let toastTimer = null;
   let collapsedFolders = loadCollapsedFolders();
@@ -49,8 +59,59 @@
     clearCompletedBtn: $('clearCompletedBtn'),
     syncStatus: $('syncStatus'), dropboxKey: $('dropboxKey'), dropboxStatus: $('dropboxStatus'),
     connectDropboxBtn: $('connectDropboxBtn'), disconnectDropboxBtn: $('disconnectDropboxBtn'), toast: $('toast'),
+    appFont: $('appFont'), taskTextSize: $('taskTextSize'), appearancePreviewText: $('appearancePreviewText'),
+    taskSortSelect: $('taskSortSelect'), sidebarSortSelect: $('sidebarSortSelect'),
     sidebar: $('sidebar'), sidebarBackdrop: $('sidebarBackdrop')
   };
+
+
+  const FONT_STACKS = {
+    system: 'Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+    avenir: 'Avenir,"Avenir Next",Helvetica,Arial,sans-serif',
+    georgia: 'Georgia,"Times New Roman",serif',
+    charter: 'Charter,"Bitstream Charter",Georgia,serif',
+    times: '"Times New Roman",Times,serif',
+    mono: 'Menlo,Monaco,"Courier New",monospace'
+  };
+
+  function loadAppearance(){
+    const font = localStorage.getItem(FONT_KEY) || 'system';
+    const size = localStorage.getItem(TEXT_SIZE_KEY) || '15';
+    applyAppearance(font, size, false);
+  }
+
+  function applyAppearance(font, size, persist=true){
+    if(!FONT_STACKS[font]) font = 'system';
+    if(!['13','14','15','16','17','18','19','20','21','22'].includes(String(size))) size = '15';
+    document.documentElement.style.setProperty('--app-font', FONT_STACKS[font]);
+    document.documentElement.style.setProperty('--task-text-size', `${size}px`);
+    if(els.appFont) els.appFont.value = font;
+    if(els.taskTextSize) els.taskTextSize.value = String(size);
+    if(persist){
+      localStorage.setItem(FONT_KEY, font);
+      localStorage.setItem(TEXT_SIZE_KEY, String(size));
+    }
+  }
+
+  function resetAppearance(){
+    localStorage.removeItem(FONT_KEY);
+    localStorage.removeItem(TEXT_SIZE_KEY);
+    applyAppearance('system','15',false);
+  }
+
+  function migrateRenamedLocalKeys(){
+    const keyPairs = [
+      [DBX_KEY, 'things-to-do-dropbox-key'],
+      [DBX_TOKEN, 'things-to-do-dropbox-token'],
+      [DBX_REFRESH, 'things-to-do-dropbox-refresh'],
+      [COLLAPSED_FOLDERS_KEY, LEGACY_COLLAPSED_FOLDERS_KEY]
+    ];
+    keyPairs.forEach(([nextKey, oldKey]) => {
+      if(localStorage.getItem(nextKey) == null && localStorage.getItem(oldKey) != null){
+        localStorage.setItem(nextKey, localStorage.getItem(oldKey));
+      }
+    });
+  }
 
 
   function loadCollapsedFolders(){
@@ -82,8 +143,9 @@
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if(saved) return normalize(JSON.parse(saved));
-      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-      if(legacy){
+      for(const legacyKey of LEGACY_STORAGE_KEYS){
+        const legacy = localStorage.getItem(legacyKey);
+        if(!legacy) continue;
         const migrated = normalize(JSON.parse(legacy));
         localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
         return migrated;
@@ -130,12 +192,14 @@
     out.deletedFolders = validTombstones(out.deletedFolders);
     out.folders = Array.isArray(out.folders) ? out.folders.map((f,i)=>({
       id:f.id||uuid(), name:f.name||'Untitled Folder', order:Number.isFinite(f.order)?f.order:i,
+      sidebarOrder:Number.isFinite(f.sidebarOrder)?f.sidebarOrder:null,
       createdAt:f.createdAt||now(), updatedAt:f.updatedAt||now()
     })) : [];
     const folderIds = new Set(out.folders.map(f=>f.id));
     out.lists = Array.isArray(out.lists) ? out.lists.map((l,i)=>({
       id:l.id||uuid(), name:l.name||'Untitled List', folderId:folderIds.has(l.folderId)?l.folderId:null,
-      order:Number.isFinite(l.order)?l.order:i, createdAt:l.createdAt||now(), updatedAt:l.updatedAt||now()
+      order:Number.isFinite(l.order)?l.order:i, sidebarOrder:Number.isFinite(l.sidebarOrder)?l.sidebarOrder:null,
+      createdAt:l.createdAt||now(), updatedAt:l.updatedAt||now()
     })) : [];
     const listIds = new Set(out.lists.map(l=>l.id));
     out.tasks = Array.isArray(out.tasks) ? out.tasks.map((t,i)=>({
@@ -147,6 +211,7 @@
     })) : [];
     applyTombstones(out);
     repairReferences(out);
+    ensureSidebarOrder(out);
     return out;
   }
 
@@ -168,6 +233,33 @@
     s.lists.forEach(l => { if(l.folderId && !folderIds.has(l.folderId)) l.folderId = null; });
     const listIds = new Set(s.lists.map(l=>l.id));
     s.tasks.forEach(t => { if(t.listId && !listIds.has(t.listId)) t.listId = null; });
+  }
+
+
+  function ensureSidebarOrder(s){
+    const topLists = s.lists.filter(l=>!l.folderId).sort(byOrderName);
+    const folders = [...s.folders].sort(byOrderName);
+    const existing = [...topLists,...folders].filter(x=>Number.isFinite(x.sidebarOrder));
+    let next = existing.length ? Math.max(...existing.map(x=>Number(x.sidebarOrder))) + 1 : 0;
+    if(existing.length===0){
+      [...topLists,...folders].forEach((x,i)=>x.sidebarOrder=i);
+      return;
+    }
+    [...topLists,...folders].forEach(x=>{ if(!Number.isFinite(x.sidebarOrder)) x.sidebarOrder=next++; });
+  }
+
+  function taskSortMode(){
+    const mode = localStorage.getItem(TASK_SORT_KEY) || 'manual';
+    return ['manual','due','priority','title','newest','oldest'].includes(mode) ? mode : 'manual';
+  }
+
+  function sidebarSortMode(){
+    return localStorage.getItem(SIDEBAR_SORT_KEY)==='alpha' ? 'alpha' : 'manual';
+  }
+
+  function nextTopLevelOrder(){
+    const vals = [...state.folders, ...state.lists.filter(l=>!l.folderId)].map(x=>Number(x.sidebarOrder)).filter(Number.isFinite);
+    return vals.length ? Math.max(...vals)+1 : 0;
   }
 
   function saveState({sync=true}={}){
@@ -201,25 +293,36 @@
       btn.classList.toggle('active', currentView.type === btn.dataset.view);
     });
 
-    const sortedFolders = [...state.folders].sort(byOrderName);
-    const sortedLists = [...state.lists].sort(byOrderName);
-    const unfiled = sortedLists.filter(l=>!l.folderId);
+    const mode = sidebarSortMode();
+    if(els.sidebarSortSelect) els.sidebarSortSelect.value = mode;
+    const byAlpha = (a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:'base'});
+    const bySidebarOrder = (a,b)=>(Number(a.sidebarOrder)||0)-(Number(b.sidebarOrder)||0) || byAlpha(a,b);
+    const childSort = mode==='alpha' ? byAlpha : byOrderName;
+    const topItems = [
+      ...state.lists.filter(l=>!l.folderId).map(item=>({type:'list',item})),
+      ...state.folders.map(item=>({type:'folder',item}))
+    ].sort((a,b)=>mode==='alpha' ? byAlpha(a.item,b.item) : bySidebarOrder(a.item,b.item));
     const parts = [];
 
-    unfiled.forEach(l => parts.push(listButtonHtml(l)));
-    sortedFolders.forEach(folder => {
-      const children = sortedLists.filter(l=>l.folderId===folder.id);
+    topItems.forEach(entry => {
+      if(entry.type==='list'){
+        parts.push(listButtonHtml(entry.item,{topLevel:true,manual:mode==='manual'}));
+        return;
+      }
+      const folder=entry.item;
+      const children = state.lists.filter(l=>l.folderId===folder.id).sort(childSort);
       const collapsed = collapsedFolders.has(folder.id);
       parts.push(`
-        <div class="folder-group${collapsed?' collapsed':''}" data-folder-id="${escAttr(folder.id)}">
+        <div class="folder-group sidebar-entity" data-sidebar-type="folder" data-sidebar-id="${escAttr(folder.id)}">
           <div class="folder-head">
+            <button class="sidebar-grab" type="button" draggable="${mode==='manual'?'true':'false'}" ${mode==='manual'?'':'hidden'} data-drag-type="folder" data-drag-id="${escAttr(folder.id)}" aria-label="Drag folder" title="Drag folder"><i data-lucide="grip-vertical"></i></button>
             <button class="folder-row folder-toggle" type="button" data-folder-id="${escAttr(folder.id)}" aria-expanded="${collapsed?'false':'true'}" aria-label="${collapsed?'Expand':'Collapse'} ${escAttr(folder.name)}" title="${collapsed?'Expand':'Collapse'} folder">
               <span class="folder-label"><span class="folder-chevron" aria-hidden="true"><i data-lucide="${collapsed?'chevron-right':'chevron-down'}"></i></span>${esc(folder.name)}</span>
               <span class="count-pill">${children.length}</span>
             </button>
             <button class="row-more folder-edit" type="button" data-folder-id="${escAttr(folder.id)}" aria-label="Edit ${escAttr(folder.name)}"><i data-lucide="ellipsis"></i></button>
           </div>
-          <div class="folder-lists${collapsed?' is-collapsed':''}" aria-hidden="${collapsed?'true':'false'}">${children.map(listButtonHtml).join('')}</div>
+          <div class="folder-lists${collapsed?' is-collapsed':''}" aria-hidden="${collapsed?'true':'false'}">${children.map(l=>listButtonHtml(l,{topLevel:false,manual:mode==='manual'})).join('')}</div>
         </div>`);
     });
 
@@ -234,20 +337,149 @@
       });
       bindSidebarDropTarget(btn,{type:'list',listId:btn.dataset.listId});
     });
-    els.listTree.querySelectorAll('.folder-toggle').forEach(btn => btn.addEventListener('click',()=>{
-      const id=btn.dataset.folderId;
-      if(collapsedFolders.has(id)) collapsedFolders.delete(id); else collapsedFolders.add(id);
-      saveCollapsedFolders(); renderSidebar();
-    }));
+    els.listTree.querySelectorAll('.folder-toggle').forEach(btn => {
+      btn.addEventListener('click',()=>{
+        const id=btn.dataset.folderId;
+        if(collapsedFolders.has(id)) collapsedFolders.delete(id); else collapsedFolders.add(id);
+        saveCollapsedFolders(); renderSidebar();
+      });
+      bindFolderListDropTarget(btn,btn.dataset.folderId);
+    });
     els.listTree.querySelectorAll('.folder-edit').forEach(btn => btn.addEventListener('click',()=>openFolder(btn.dataset.folderId)));
+    els.listTree.querySelectorAll('.sidebar-grab').forEach(handle=>bindSidebarDragHandle(handle));
+    els.listTree.querySelectorAll('.sidebar-entity').forEach(item=>bindSidebarEntityDrop(item));
   }
 
-  function listButtonHtml(list){
+  function listButtonHtml(list,{topLevel=false,manual=true}={}){
     const count = state.tasks.filter(t=>!t.completed && t.listId===list.id).length;
     const active = currentView.type==='list' && currentView.id===list.id;
-    return `<button class="list-row${active?' active':''}" type="button" data-list-id="${escAttr(list.id)}">
-      <span class="list-label">${esc(list.name)}</span><span class="count-pill">${count}</span>
-    </button>`;
+    return `<div class="sidebar-list-item sidebar-entity${topLevel?' top-level-list':''}" data-sidebar-type="list" data-sidebar-id="${escAttr(list.id)}">
+      <button class="sidebar-grab" type="button" draggable="${manual?'true':'false'}" ${manual?'':'hidden'} data-drag-type="list" data-drag-id="${escAttr(list.id)}" aria-label="Drag list" title="Drag list"><i data-lucide="grip-vertical"></i></button>
+      <button class="list-row${active?' active':''}" type="button" data-list-id="${escAttr(list.id)}">
+        <span class="list-label">${esc(list.name)}</span><span class="count-pill">${count}</span>
+      </button>
+    </div>`;
+  }
+
+  function clearSidebarEntityIndicators(){
+    document.querySelectorAll('.sidebar-entity').forEach(el=>el.classList.remove('sidebar-drop-before','sidebar-drop-after'));
+    document.querySelectorAll('.folder-row').forEach(el=>el.classList.remove('folder-receive-list'));
+    els.listTree?.classList.remove('sidebar-root-drop');
+  }
+
+  function bindSidebarDragHandle(handle){
+    handle.addEventListener('click',e=>e.stopPropagation());
+    handle.addEventListener('dragstart',e=>{
+      if(sidebarSortMode()!=='manual') { e.preventDefault(); return; }
+      sidebarDrag={type:handle.dataset.dragType,id:handle.dataset.dragId};
+      handle.closest('.sidebar-entity')?.classList.add('sidebar-dragging');
+      e.dataTransfer.effectAllowed='move';
+      e.dataTransfer.setData('text/plain',`sidebar:${sidebarDrag.type}:${sidebarDrag.id}`);
+    });
+    handle.addEventListener('dragend',endSidebarDrag);
+  }
+
+  function endSidebarDrag(){
+    document.querySelectorAll('.sidebar-entity').forEach(el=>el.classList.remove('sidebar-dragging'));
+    clearSidebarEntityIndicators();
+    sidebarDrag=null; sidebarDropTarget=null;
+  }
+
+  function sidebarEntityRef(el){ return {type:el.dataset.sidebarType,id:el.dataset.sidebarId}; }
+  function isTopLevelEntity(ref){
+    if(ref.type==='folder') return true;
+    const list=state.lists.find(l=>l.id===ref.id);
+    return !!list && !list.folderId;
+  }
+
+  function bindSidebarEntityDrop(el){
+    el.addEventListener('dragover',e=>{
+      if(!sidebarDrag || sidebarSortMode()!=='manual') return;
+      const target=sidebarEntityRef(el);
+      if(sidebarDrag.type===target.type && sidebarDrag.id===target.id) return;
+      if(sidebarDrag.type==='folder' && !isTopLevelEntity(target)) return;
+      if(target.type==='folder' && sidebarDrag.type==='list' && e.target.closest('.folder-row')) return;
+      e.preventDefault(); e.stopPropagation();
+      clearSidebarEntityIndicators();
+      const r=el.getBoundingClientRect();
+      const before=e.clientY<r.top+r.height/2;
+      el.classList.add(before?'sidebar-drop-before':'sidebar-drop-after');
+      sidebarDropTarget={target,before};
+      e.dataTransfer.dropEffect='move';
+    });
+    el.addEventListener('drop',e=>{
+      if(!sidebarDrag || !sidebarDropTarget) return;
+      e.preventDefault(); e.stopPropagation();
+      const {target,before}=sidebarDropTarget;
+      moveSidebarEntity(sidebarDrag,target,before);
+      endSidebarDrag();
+    });
+  }
+
+  function bindFolderListDropTarget(el,folderId){
+    el.addEventListener('dragover',e=>{
+      if(!sidebarDrag || sidebarDrag.type!=='list' || sidebarSortMode()!=='manual') return;
+      const list=state.lists.find(l=>l.id===sidebarDrag.id);
+      if(!list || list.folderId===folderId) return;
+      e.preventDefault(); e.stopPropagation(); clearSidebarEntityIndicators();
+      el.classList.add('folder-receive-list'); e.dataTransfer.dropEffect='move';
+    });
+    el.addEventListener('dragleave',e=>{ if(!el.contains(e.relatedTarget)) el.classList.remove('folder-receive-list'); });
+    el.addEventListener('drop',e=>{
+      if(!sidebarDrag || sidebarDrag.type!=='list') return;
+      e.preventDefault(); e.stopPropagation();
+      moveListIntoFolder(sidebarDrag.id,folderId);
+      endSidebarDrag();
+    });
+  }
+
+  function moveSidebarEntity(drag,target,before){
+    const targetList = target.type==='list' ? state.lists.find(l=>l.id===target.id) : null;
+    const targetIsTop = target.type==='folder' || (targetList && !targetList.folderId);
+    if(drag.type==='folder' || targetIsTop){ reorderTopLevel(drag,target,before); return; }
+    if(drag.type==='list' && targetList) reorderListWithinFolder(drag.id,targetList.id,before);
+  }
+
+  function reorderTopLevel(drag,target,before){
+    if(drag.type==='list'){
+      const moving=state.lists.find(l=>l.id===drag.id); if(!moving) return;
+      moving.folderId=null;
+    }
+    let items=[
+      ...state.lists.filter(l=>!l.folderId).map(item=>({type:'list',id:item.id,item})),
+      ...state.folders.map(item=>({type:'folder',id:item.id,item}))
+    ].sort((a,b)=>(Number(a.item.sidebarOrder)||0)-(Number(b.item.sidebarOrder)||0));
+    const movingIndex=items.findIndex(x=>x.type===drag.type&&x.id===drag.id);
+    if(movingIndex<0) return;
+    const [moving]=items.splice(movingIndex,1);
+    const targetIndex=items.findIndex(x=>x.type===target.type&&x.id===target.id);
+    if(targetIndex<0) return;
+    items.splice(targetIndex+(before?0:1),0,moving);
+    const ts=now();
+    items.forEach((x,i)=>{x.item.sidebarOrder=i;x.item.updatedAt=ts;});
+    saveState();
+  }
+
+  function reorderListWithinFolder(listId,targetId,before){
+    const moving=state.lists.find(l=>l.id===listId), target=state.lists.find(l=>l.id===targetId);
+    if(!moving||!target||!target.folderId) return;
+    moving.folderId=target.folderId;
+    const siblings=state.lists.filter(l=>l.folderId===target.folderId&&l.id!==listId).sort(byOrderName);
+    const idx=siblings.findIndex(l=>l.id===targetId);
+    siblings.splice(Math.max(0,idx+(before?0:1)),0,moving);
+    const ts=now(); siblings.forEach((l,i)=>{l.order=i;l.updatedAt=ts;});
+    saveState();
+  }
+
+  function moveListIntoFolder(listId,folderId){
+    const list=state.lists.find(l=>l.id===listId); if(!list) return;
+    list.folderId=folderId; list.order=nextListOrder(folderId); list.updatedAt=now();
+    collapsedFolders.delete(folderId); saveCollapsedFolders(); saveState();
+  }
+
+  function moveListToTopLevelEnd(listId){
+    const list=state.lists.find(l=>l.id===listId); if(!list) return;
+    list.folderId=null; list.sidebarOrder=nextTopLevelOrder(); list.updatedAt=now(); saveState();
   }
 
   function renderTags(){
@@ -298,6 +530,9 @@
     }
     if(tag) tasks = tasks.filter(t=>t.tags.includes(tag));
     if(q) tasks = tasks.filter(t=>[t.title,t.notes,t.due,t.priority,locationName(t),t.completed?'completed':'',...t.tags].join(' ').toLowerCase().includes(q));
+
+    const mode=taskSortMode();
+    if(mode!=='manual') return tasks.sort(taskComparator(mode));
     if(q) return tasks.sort((a,b)=>Number(a.completed)-Number(b.completed) || (b.updatedAt||0)-(a.updatedAt||0));
     if(currentView.type==='completed') return tasks.sort((a,b)=>(b.completedAt||0)-(a.completedAt||0));
     if(currentView.type==='today') return tasks.sort((a,b)=>{
@@ -307,12 +542,33 @@
     return tasks.sort((a,b)=>a.order-b.order || a.createdAt-b.createdAt);
   }
 
+
+  function taskComparator(mode){
+    const priorityRank={high:0,medium:1,low:2,'':3};
+    return (a,b)=>{
+      const completedGroup=Number(a.completed)-Number(b.completed);
+      if(completedGroup) return completedGroup;
+      if(mode==='title') return a.title.localeCompare(b.title,undefined,{sensitivity:'base'});
+      if(mode==='newest') return (b.createdAt||0)-(a.createdAt||0);
+      if(mode==='oldest') return (a.createdAt||0)-(b.createdAt||0);
+      if(mode==='priority'){
+        const pr=(priorityRank[a.priority]??3)-(priorityRank[b.priority]??3);
+        if(pr) return pr;
+        return dueValue(a)-dueValue(b) || a.title.localeCompare(b.title);
+      }
+      if(mode==='due') return dueValue(a)-dueValue(b) || (priorityRank[a.priority]??3)-(priorityRank[b.priority]??3) || a.title.localeCompare(b.title);
+      return 0;
+    };
+  }
+  function dueValue(t){ return t.due ? new Date(t.due+'T00:00:00').getTime() : Number.MAX_SAFE_INTEGER; }
+
   function renderTasks(){
     const q = els.search.value.trim();
     const info = q ? {title:'Search results',subtitle:'Across all tasks, lists, Inbox, Today, and Completed.'} : currentViewInfo();
     els.viewTitle.textContent = info.title;
     els.viewSubtitle.textContent = info.subtitle;
     els.editCurrentListBtn.hidden = currentView.type!=='list' || !!q;
+    if(els.taskSortSelect) els.taskSortSelect.value=taskSortMode();
     const completedCount = state.tasks.filter(t=>t.completed).length;
     els.clearCompletedBtn.hidden = currentView.type!=='completed' || !!q || completedCount===0;
     const tasks = visibleTasks();
@@ -350,6 +606,7 @@
   }
 
   function taskNode(t, filtered){
+    const manualSort = taskSortMode()==='manual';
     const el = document.createElement('article');
     el.className = 'task-card'+(t.completed?' completed':'');
     el.dataset.id = t.id;
@@ -358,7 +615,7 @@
     const loc = locationName(t);
     const showTodayBadge = t.today && currentView.type!=='today' && !t.completed;
     el.innerHTML = `
-      <button class="grab" type="button" aria-label="Drag task" title="Drag task" ${filtered||currentView.type==='completed'?'disabled':''}><i data-lucide="grip-vertical"></i></button>
+      <button class="grab" type="button" aria-label="Drag task" title="Drag task" ${filtered||currentView.type==='completed'||!manualSort?'disabled':''}><i data-lucide="grip-vertical"></i></button>
       <button class="check" type="button" aria-label="${t.completed?'Mark incomplete':'Complete task'}">${t.completed?'<i data-lucide="check"></i>':''}</button>
       <div class="task-main">
         <div class="task-title-row">
@@ -376,7 +633,7 @@
       <button class="more-btn" type="button" aria-label="Edit task"><i data-lucide="ellipsis"></i></button>`;
 
     const grab = el.querySelector('.grab');
-    if(!filtered && currentView.type!=='completed'){
+    if(!filtered && currentView.type!=='completed' && manualSort){
       grab.draggable = true;
       grab.addEventListener('dragstart',e=>startDrag(e,t.id,el));
       grab.addEventListener('dragend',endDrag);
@@ -435,7 +692,7 @@
     document.querySelectorAll('.task-card').forEach(c=>c.classList.remove('dragging','drop-line-before','drop-line-after'));
     removeEndLine(); clearSidebarDropTargets(); draggedId=null; dropTarget=null;
   }
-  function dragAllowed(){ return draggedId && currentView.type!=='completed' && !els.search.value.trim() && !els.tagFilter.value; }
+  function dragAllowed(){ return draggedId && taskSortMode()==='manual' && currentView.type!=='completed' && !els.search.value.trim() && !els.tagFilter.value; }
   function dragOverCard(e,card,targetId){
     if(!dragAllowed() || draggedId===targetId) return;
     e.preventDefault();
@@ -584,8 +841,16 @@
   function saveList(){
     const name=els.listName.value.trim();if(!name){els.listError.textContent='Enter a list name.';els.listError.hidden=false;els.listName.focus();return;}
     const folderId=els.listFolderSelect.value||null;const ts=now();
-    if(editingListId){const l=state.lists.find(x=>x.id===editingListId);if(!l)return;Object.assign(l,{name,folderId,updatedAt:ts});}
-    else {state.lists.push({id:uuid(),name,folderId,order:nextListOrder(folderId),createdAt:ts,updatedAt:ts});}
+    if(editingListId){
+      const l=state.lists.find(x=>x.id===editingListId);if(!l)return;
+      const moved=l.folderId!==folderId;
+      Object.assign(l,{name,folderId,updatedAt:ts});
+      if(moved){
+        if(folderId) l.order=nextListOrder(folderId);
+        else l.sidebarOrder=nextTopLevelOrder();
+      }
+    }
+    else {state.lists.push({id:uuid(),name,folderId,order:nextListOrder(folderId),sidebarOrder:folderId?null:nextTopLevelOrder(),createdAt:ts,updatedAt:ts});}
     closeList();saveState();toast('List saved');
   }
   function deleteList(){
@@ -612,7 +877,7 @@
     const name=els.folderName.value.trim();if(!name){els.folderError.textContent='Enter a folder name.';els.folderError.hidden=false;els.folderName.focus();return;}
     const ts=now();
     if(editingFolderId){const f=state.folders.find(x=>x.id===editingFolderId);if(!f)return;Object.assign(f,{name,updatedAt:ts});}
-    else state.folders.push({id:uuid(),name,order:Math.max(-1,...state.folders.map(f=>Number(f.order)||0))+1,createdAt:ts,updatedAt:ts});
+    else state.folders.push({id:uuid(),name,order:Math.max(-1,...state.folders.map(f=>Number(f.order)||0))+1,sidebarOrder:nextTopLevelOrder(),createdAt:ts,updatedAt:ts});
     closeFolder();saveState();toast('Folder saved');
   }
   function deleteFolder(){
@@ -620,7 +885,7 @@
     const children=state.lists.filter(l=>l.folderId===editingFolderId).length;
     const message=children?`Delete “${folder.name}”? Its ${children} list${children===1?'':'s'} will stay, but move out of the folder.`:`Delete “${folder.name}”?`;
     if(confirm(message)){
-      const ts=now();state.lists.forEach(l=>{if(l.folderId===editingFolderId){l.folderId=null;l.order=nextListOrder(null);l.updatedAt=ts;}});
+      const ts=now();let topOrder=nextTopLevelOrder();state.lists.forEach(l=>{if(l.folderId===editingFolderId){l.folderId=null;l.sidebarOrder=topOrder++;l.updatedAt=ts;}});
       state.folders=state.folders.filter(f=>f.id!==editingFolderId);state.deletedFolders[editingFolderId]=ts;closeFolder();saveState();toast('Folder deleted');
     }
   }
@@ -671,13 +936,23 @@
     const rr=await fetch('https://api.dropboxapi.com/oauth2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const d=await rr.json();if(!rr.ok)return r;
     localStorage.setItem(DBX_TOKEN,d.access_token);return fetch(url,{...opts,headers:{...(opts.headers||{}),Authorization:`Bearer ${d.access_token}`}});
   }
-  async function readDropbox(){
-    const r=await apiFetch('https://content.dropboxapi.com/2/files/download',{headers:{'Dropbox-API-Arg':JSON.stringify({path:DROPBOX_FILE})}});
+  async function readDropboxFile(path){
+    const r=await apiFetch('https://content.dropboxapi.com/2/files/download',{headers:{'Dropbox-API-Arg':JSON.stringify({path})}});
     if(r.status===409)return null;if(!r.ok)throw new Error('Could not read Dropbox data');return normalize(await r.json());
+  }
+  async function readDropbox(){
+    const current=await readDropboxFile(DROPBOX_FILE);
+    if(current)return {data:current, usedLegacy:false};
+    const legacy=await readDropboxFile(LEGACY_DROPBOX_FILE);
+    return {data:legacy, usedLegacy:!!legacy};
   }
   async function writeDropbox(data){
     const r=await apiFetch('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','Dropbox-API-Arg':JSON.stringify({path:DROPBOX_FILE,mode:'overwrite',autorename:false,mute:true})},body:JSON.stringify(data)});
     if(!r.ok)throw new Error('Could not save to Dropbox');
+  }
+  async function deleteLegacyDropboxFile(){
+    const r=await apiFetch('https://api.dropboxapi.com/2/files/delete_v2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:LEGACY_DROPBOX_FILE})});
+    if(r.status!==409 && !r.ok)throw new Error('Tasks synced, but the old Dropbox data file could not be removed');
   }
 
   function mergeStates(local,remote){
@@ -699,13 +974,22 @@
   }
   async function syncDropbox(){
     if(!localStorage.getItem(DBX_TOKEN))return;els.syncStatus.textContent='Syncing…';
-    try{const remote=await readDropbox();state=remote?mergeStates(state,remote):normalize(state);localStorage.setItem(STORAGE_KEY,JSON.stringify(state));await writeDropbox(state);render();els.dropboxStatus.textContent='Dropbox is connected and synced.';}
+    try{
+      const remoteResult=await readDropbox();
+      const remote=remoteResult.data;
+      state=remote?mergeStates(state,remote):normalize(state);
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+      await writeDropbox(state);
+      if(remoteResult.usedLegacy) await deleteLegacyDropboxFile();
+      render();
+      els.dropboxStatus.textContent='Dropbox is connected and synced.';
+    }
     catch(e){els.syncStatus.textContent='Dropbox sync error';els.dropboxStatus.textContent=e.message||'Dropbox sync failed.';throw e;}
   }
   function disconnectDropbox(){[DBX_TOKEN,DBX_REFRESH].forEach(k=>localStorage.removeItem(k));render();els.dropboxStatus.textContent='Dropbox disconnected from this browser.'}
 
   function exportBackup(){
-    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`do-me-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);
+    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`tasks-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);
   }
   async function importBackup(file){try{const obj=normalize(JSON.parse(await file.text()));state=mergeStates(state,obj);saveState();toast('Backup imported')}catch{toast('That backup could not be read')}}
 
@@ -735,6 +1019,14 @@
   const todayNav=document.querySelector('.nav-row[data-view="today"]');
   if(inboxNav) bindSidebarDropTarget(inboxNav,{type:'inbox'});
   if(todayNav) bindSidebarDropTarget(todayNav,{type:'today'});
+  els.listTree.addEventListener('dragover',e=>{
+    if(!sidebarDrag || sidebarDrag.type!=='list' || sidebarSortMode()!=='manual' || e.target!==els.listTree) return;
+    e.preventDefault(); clearSidebarEntityIndicators(); els.listTree.classList.add('sidebar-root-drop'); e.dataTransfer.dropEffect='move';
+  });
+  els.listTree.addEventListener('drop',e=>{
+    if(!sidebarDrag || sidebarDrag.type!=='list' || e.target!==els.listTree) return;
+    e.preventDefault(); moveListToTopLevelEnd(sidebarDrag.id); endSidebarDrag();
+  });
   $('addTaskBtn').addEventListener('click',()=>openTask());
   $('inlineAddTaskBtn').addEventListener('click',()=>openTask());
   $('mobileAddBtn').addEventListener('click',()=>openTask());
@@ -770,10 +1062,17 @@
   els.folderDialog.addEventListener('click',e=>{if(e.target===els.folderDialog)closeFolder()});els.folderDialog.addEventListener('cancel',e=>{e.preventDefault();closeFolder()});
 
   els.search.addEventListener('input',renderTasks);els.tagFilter.addEventListener('change',renderTasks);
-  $('settingsBtn').addEventListener('click',()=>{els.dropboxKey.value=localStorage.getItem(DBX_KEY)||'';els.dropboxStatus.textContent=localStorage.getItem(DBX_TOKEN)?'Dropbox is connected in this browser.':'';els.settingsDialog.showModal()});
+  els.taskSortSelect?.addEventListener('change',()=>{localStorage.setItem(TASK_SORT_KEY,els.taskSortSelect.value);renderTasks();});
+  els.sidebarSortSelect?.addEventListener('change',()=>{localStorage.setItem(SIDEBAR_SORT_KEY,els.sidebarSortSelect.value);renderSidebar();});
+  els.appFont?.addEventListener('change',()=>applyAppearance(els.appFont.value,els.taskTextSize.value));
+  els.taskTextSize?.addEventListener('change',()=>applyAppearance(els.appFont.value,els.taskTextSize.value));
+  $('resetAppearanceBtn')?.addEventListener('click',resetAppearance);
+  $('settingsBtn').addEventListener('click',()=>{els.dropboxKey.value=localStorage.getItem(DBX_KEY)||'';els.dropboxStatus.textContent=localStorage.getItem(DBX_TOKEN)?'Dropbox is connected in this browser.':'';applyAppearance(localStorage.getItem(FONT_KEY)||'system',localStorage.getItem(TEXT_SIZE_KEY)||'15',false);els.settingsDialog.showModal()});
   $('settingsCloseBtn').addEventListener('click',()=>els.settingsDialog.close());els.settingsDialog.addEventListener('click',e=>{if(e.target===els.settingsDialog)els.settingsDialog.close()});els.settingsDialog.addEventListener('cancel',e=>{e.preventDefault();els.settingsDialog.close()});
   els.connectDropboxBtn.addEventListener('click',connectDropbox);els.disconnectDropboxBtn.addEventListener('click',disconnectDropbox);$('exportBtn').addEventListener('click',exportBackup);$('importInput').addEventListener('change',e=>{if(e.target.files[0])importBackup(e.target.files[0]);e.target.value=''})
 
+  loadAppearance();
+  refreshIcons();
   if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('service-worker.js').catch(()=>{});
   handleOAuth().finally(render);
 })();
