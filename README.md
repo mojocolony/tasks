@@ -1,4 +1,4 @@
-# Tasks
+# Do Me
 
 A small browser-based to-do app built around Inbox, Today, custom lists, and folders/projects.
 
@@ -24,8 +24,8 @@ A small browser-based to-do app built around Inbox, Today, custom lists, and fol
 - Optional Dropbox sync using OAuth 2 + PKCE
 - Installable as a PWA when hosted on HTTPS
 
-## Migration from earlier versions
-Existing Do Me / earlier Tasks data in the same browser is migrated automatically to the new Tasks storage keys. Old Upcoming and Someday tasks become custom lists; old Today tasks become Inbox tasks marked for Today.
+## Migration from the first prototype
+If the earlier prototype exists in the same browser, its tasks are migrated automatically. Old Upcoming and Someday tasks become custom lists; old Today tasks become Inbox tasks marked for Today.
 
 ## Try it locally
 Open `index.html` in a modern browser. Everything except Dropbox sync will work immediately.
@@ -37,16 +37,21 @@ Settings → Pages → Deploy from a branch → `main` → `/ (root)`.
 ## Dropbox sync
 You can reuse the Dropbox app you already use for your other personal apps.
 
-1. Host Tasks on GitHub Pages first.
-2. In the Dropbox App Console, add the exact Tasks GitHub Pages URL under OAuth 2 → Redirect URIs.
+1. Host Do Me on GitHub Pages first.
+2. In the Dropbox App Console, add the exact Do Me GitHub Pages URL under OAuth 2 → Redirect URIs.
 3. Make sure `files.content.read` and `files.content.write` are enabled.
-4. In Tasks → Settings, paste the same Dropbox App key and choose Connect Dropbox.
+4. In Do Me → Settings, paste the same Dropbox App key and choose Connect Dropbox.
 
-Tasks stores its Dropbox data in `/tasks.json` inside the Dropbox app folder, separate from your other apps. On the first sync after upgrading from Do Me, the app automatically imports the old `/things-to-do.json`, writes the data safely to `/tasks.json`, and removes the old file only after the new file has been saved successfully. Tasks, lists, and folders are merged individually during sync, with deletion markers to avoid deleted items reappearing on another device.
+For compatibility with earlier builds, Do Me continues to store its Dropbox data in `/things-to-do.json` inside the Dropbox app folder, separate from your other apps. Tasks, lists, and folders are merged individually during sync, with deletion markers to avoid deleted items reappearing on another device.
 
 
 Folder headings include a disclosure button; click the chevron or folder name to collapse or expand the lists inside.
 
-## Appearance
 
-Choose a task font and text size in Settings. Appearance preferences are saved on each device.
+## v1.10 UI update
+- Adds a visible `Do Me v1.10` build number in the sidebar footer.
+- Standardizes interface controls on the Lucide icon family used by Notes and Studio.
+- Replaces ambiguous new-list/new-folder symbols with `list-plus` and `folder-plus`.
+- Makes folder headings larger than individual list names.
+- Adds a one-click `Delete all` action to the Completed view, with confirmation and Dropbox-safe deletion tombstones.
+- Bumps the service-worker cache to v10 so the update is picked up reliably.

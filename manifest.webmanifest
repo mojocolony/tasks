@@ -1,6 +1,6 @@
 {
-  "name": "Tasks",
-  "short_name": "Tasks",
+  "name": "Do Me",
+  "short_name": "Do Me",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#fffdfa",
