@@ -60,7 +60,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 
   .primary-btn{color:#fff}.shortcut-key{background:rgba(23,23,21,.13)}.nav-row.active,.list-row.active{background:var(--accent-soft)}.task-card.completed .check{color:#fff}.mobile-topbar{background:rgba(23,23,21,.94)}
 }
 
-/* v1.11: current Tasks controls restored after the v1.10 source regression */
+/* v1.12: current Tasks controls restored after the v1.10 source regression */
 .sidebar-heading-actions{align-items:center}
 .sidebar-sort-select{width:auto;min-width:68px;border:0;background:transparent;padding:4px 18px 4px 5px;border-radius:6px;color:var(--muted);font-size:11px;font-weight:700}
 .sidebar-sort-select:hover{background:var(--hover);color:var(--ink)}
