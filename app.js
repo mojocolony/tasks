@@ -937,8 +937,10 @@
     localStorage.setItem(DBX_TOKEN,d.access_token);return fetch(url,{...opts,headers:{...(opts.headers||{}),Authorization:`Bearer ${d.access_token}`}});
   }
   async function readDropboxFile(path){
-    const r=await apiFetch('https://content.dropboxapi.com/2/files/download',{headers:{'Dropbox-API-Arg':JSON.stringify({path})}});
-    if(r.status===409)return null;if(!r.ok)throw new Error('Could not read Dropbox data');return normalize(await r.json());
+    const r=await apiFetch('https://content.dropboxapi.com/2/files/download',{method:'POST',headers:{'Dropbox-API-Arg':JSON.stringify({path})}});
+    if(r.status===409)return null;
+    if(!r.ok) throw new Error(`Could not read Dropbox data${r.status ? ` (${r.status})` : ''}`);
+    return normalize(await r.json());
   }
   async function readDropbox(){
     const current=await readDropboxFile(DROPBOX_FILE);
